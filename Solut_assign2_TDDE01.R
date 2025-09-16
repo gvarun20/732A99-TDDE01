@@ -1,0 +1,144 @@
+# exercise 1 - 5 p
+# 3 p for implementation
+# 1 p if it runs correctly
+# 1 p for answering the question correctly
+# lines corresponding to dropout implementation are marked with ###, the rest of the code was provided in the exam
+
+set.seed(1234)
+
+# produce the training data in dat
+
+x <- runif(500,-4,4)
+y <- sin(x)
+dat <- cbind(x,y)
+plot(dat)
+
+gamma <- 0.01
+r <- 1 ### dropout rate 1-r
+
+h <- function(z){
+  
+  # activation function (sigmoid)
+  
+  return(1/(1+exp(-z)))
+}
+
+hprime <- function(z){
+  
+  # derivative of the activation function (sigmoid)
+  
+  return(h(z) * (1 - h(z)))
+}
+
+yhat <- function(x){
+
+  # prediction for point x
+  
+q0 <- x
+z1 <- w1 %*% q0 + b1
+q1 <- as.matrix(apply(z1,1,h), nrow = 2, ncol = 1)
+z2 <- w2 %*% q1 + b2
+return(z2)
+}
+
+yhat2 <- function(x){
+  
+  ### final prediction for point x (it involves r)
+  
+  q0 <- x
+  z1 <- (r*w1) %*% q0 + b1
+  q1 <- as.matrix(apply(z1,1,h), nrow = 2, ncol = 1)
+  z2 <- (r*w2) %*% q1 + b2
+  return(z2)
+}
+
+MSE <- function(){
+  
+  # mean squared error
+  
+  res <- NULL
+  for(i in 1:nrow(dat)){
+    res <- c(res,(dat[i,2] - yhat(dat[i,1])) ^ 2)
+    }
+  return(mean(res))
+}
+
+# initialize parameters
+
+w1 <- matrix(runif(2,-.1,.1), nrow = 2, ncol = 1)
+b1 <- matrix(runif(2,-.1,.1), nrow = 2, ncol = 1)
+
+w2 <- matrix(runif(2,-.1,.1), nrow = 1, ncol = 2)
+b2 <- matrix(runif(1,-.1,.1), nrow = 1, ncol = 1)
+
+res <- NULL
+for(i in 1:100000){
+  if(i %% 1000 == 0){
+    res <- c(res,MSE())
+  }
+  
+  # forward propagation
+  
+  j <- sample(1:nrow(dat),1)
+  q0 <- dat[j,1]
+  m0 <- sample(c(0,1),1,replace = TRUE, c(1-r,r)) ### drop input unit
+  z1 <- w1 %*% (q0*m0) + b1
+  q1 <- as.matrix(apply(z1,1,h), nrow = 2, ncol = 1)
+  m1 <- sample(c(0,1),2,replace = TRUE, c(1-r,r)) ### drop hidden units
+  z2 <- w2 %*% (q1*m1) + b2
+  
+  # backward propagation
+  
+  dz2 <- - 2 * (dat[j,2] - z2)
+  dq1 <- t(w2) %*% dz2
+  dz1 <- dq1 * hprime(z1)
+  dw2 <- dz2 %*% t(q1)
+  db2 <- dz2
+  dw1 <- dz1 %*% t(q0)
+  db1 <- dz1
+  
+  # parameter updating
+  
+  w2 <- w2 - (gamma * dw2 * m1) ### update non-dropped hidden units
+  b2 <- b2 - gamma * db2
+  w1 <- w1 - (gamma * dw1 * c(m0,m0) * m1) ### update non-dropped hidden units
+  b1 <- b1 - gamma * db1
+}
+plot(res, type = "l")
+
+plot(dat)
+points(dat[,1],lapply(dat[,1],yhat2),col="red") ### apply final prediction
+
+# Lower r value implies larger regularization and, thus, worse fit of the training data. The ultimate goal of dropout is
+# to get a better fit of the test data (i.e., low generalization error). However, this is too simple an example to observe it.
+
+# exercise 2 - 5 p
+# 3 p for implementation
+# 1 p if it runs correctly
+# 1 p for answering the question correctly
+
+set.seed(1234)
+
+x <- array(NA, dim = c(100,2))
+t <- array(NA, dim = c(100))
+x[,1] <- runif(100,0,3)
+x[,2] <- runif(100,0,9)
+t <- ifelse(x[,2]<(x[,1])^2,-1,1)
+plot(x[,1],x[,2],col=t+2)
+
+w <- c(0,0)
+alpha <- 0.0001
+
+res <- NULL
+for(i in 1:100){
+  res <- c(res,sum(t != (2 * ((w %*% t(x[,1:2]))>0) - 1))) # note that t is both class label and transpose operation :-(
+  
+  w[1] <- w[1] + alpha * sum((t - w %*% t(x[,1:2])) * x[,1])
+  w[2] <- w[2] + alpha * sum((t - w %*% t(x[,1:2])) * x[,2])
+}
+
+plot(x[,1],x[,2],col=(2 * ((w %*% t(x[,1:2]))>0) - 1)+2)
+plot(res, type = "l")
+
+# It works for linearly separable datasets. If the true label is larger than the prediction, then the weights get
+# increased for positive input values and decreased for negative input values. The opposite when the true label is smaller.

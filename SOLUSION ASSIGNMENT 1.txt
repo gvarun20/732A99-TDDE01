@@ -1,0 +1,111 @@
+data=read.csv("Bikes.csv")
+
+n=dim(data)[1]
+set.seed(12345)
+id=sample(1:n, floor(n*0.6))
+train=data[id,]
+test=data[-id,]
+
+library(caret)
+
+scaler=preProcess(train)
+trainS=predict(scaler,train)
+testS=predict(scaler, test)
+
+covariates=trainS[,-1]
+response=trainS[,1]
+
+library(glmnet)
+
+set.seed(12345)
+model=cv.glmnet(as.matrix(covariates),
+                response, alpha=1, family="gaussian")
+
+# Optimal lambda
+optimal_lambda_min = model$lambda.min
+optimal_lambda_1se = model$lambda.1se
+
+cat("Optimal Lambda (min):", optimal_lambda_min, "\n")
+cat("Optimal Lambda (1se):", optimal_lambda_1se, "\n")
+
+# Plot cross-validation errors
+plot(model)
+
+# Coefficients for the lambda.1se model
+coef(model, s="lambda.1se")
+
+# Assignment 1, Part 2
+Ypred=predict(model, as.matrix(covariates), s="lambda.1se")[,1]
+MSE=mean((Ypred-response)^2)
+
+# Prediction interval for the first test observation
+testX=as.matrix(testS[1,-1])
+Ytest=predict(model, testX, s="lambda.1se")
+CI=c(Ytest-1.96*sqrt(MSE), Ytest+1.96*sqrt(MSE))
+
+cat("95% Prediction Interval for the first test observation:", CI, "\n")
+
+# Assignment 1, Part 3
+costF <- function(Y, Yfit) {
+  R = abs(Y - Yfit)
+  return(mean(R))
+}
+
+x = as.matrix(trainS[,c(4,6)])
+xt = as.matrix(testS[,c(4,6)])
+
+Fs = list()
+k = 0
+TestE = list()
+Theta = list()
+
+myCost = function(theta) {
+  f = costF(trainS$Dew.point.temperature, x %*% theta)
+  .GlobalEnv$k = .GlobalEnv$k + 1
+  .GlobalEnv$Fs[[k]] = f
+  .GlobalEnv$TestE[[k]] = costF(testS$Dew.point.temperature, xt %*% theta)
+  .GlobalEnv$Theta[[k]] = theta
+  return(f)
+}
+
+res = optim(rep(0, 2), fn = myCost, method = "BFGS")
+
+# Plot training and test cost over iterations
+plot(as.numeric(Fs), type="l", col="blue", xlab="Iteration", ylab="Cost", main="Training and Test Cost")
+points(as.numeric(TestE), type="l", col="red")
+legend("topright", legend=c("Training Cost", "Test Cost"), col=c("blue", "red"), lty=1)
+
+# Optimal iteration number
+optimal_iter = which.min(TestE)
+cat("Optimal Iteration:", optimal_iter, "\n")
+
+# Predictions using optimal and 5th iteration models
+Pred1 = xt %*% Theta[[optimal_iter]]
+Pred2 = xt %*% Theta[[5]]
+
+# Scatter plots
+df1 = data.frame(x = xt[,1], y = xt[,2], color = testS$Dew.point.temperature)
+ggplot(df1, aes(x = x, y = y, color = color)) +
+  geom_point() +
+  ggtitle("Original Target Values")
+
+df2 = data.frame(x = xt[,1], y = xt[,2], color = Pred1)
+ggplot(df2, aes(x = x, y = y, color = color)) +
+  geom_point() +
+  ggtitle("Predicted Values (Optimal Model)")
+
+df3 = data.frame(x = xt[,1], y = xt[,2], color = Pred2)
+ggplot(df3, aes(x = x, y = y, color = color)) +
+  geom_point() +
+  ggtitle("Predicted Values (5 Iterations)")
+
+# Additional scatter plots
+df = data.frame(x = xt[,1], y = xt[,2], color = Pred1)
+ggplot(df, aes(x = x, y = y, color = color)) +
+  geom_point() +
+  ggtitle("Scatter Plot - Pred1")
+
+df = data.frame(x = xt[,1], y = xt[,2], color = Pred2)
+ggplot(df, aes(x = x, y = y, color = color)) +
+  geom_point() +
+  ggtitle("Scatter Plot - Pred2")

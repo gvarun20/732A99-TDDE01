@@ -1,0 +1,88 @@
+# Load required libraries
+library(dplyr)
+library(tree)
+
+# Load data
+df = read.csv("Rice.csv", stringsAsFactors = TRUE)
+
+# Split data into training and test sets
+n = dim(df)[1]
+set.seed(12345)
+id = sample(1:n, floor(n * 0.7))
+train = df[id, ]
+test = df[-id, ]
+
+# Add basis functions (squared terms)
+train1 = train %>% mutate_if(is.numeric, list(x2 = function(x) x^2))
+test1 = test %>% mutate_if(is.numeric, list(x2 = function(x) x^2))
+
+# Logistic regression models
+m1 = glm(Class ~ ., data = train, family = binomial)   # Model 1: Original features
+m2 = glm(Class ~ ., data = train1, family = binomial)  # Model 2: Features + squared terms
+
+# Misclassification function
+missclass = function(X, X1) {
+  n = length(X)
+  return(1 - sum(diag(table(X, X1))) / n)
+}
+
+# Logistic Regression: Misclassification Errors
+train_error_m1 = missclass(train$Class, predict(m1, newdata = train, type = "response") > 0.5)
+test_error_m1 = missclass(test$Class, predict(m1, newdata = test, type = "response") > 0.5)
+train_error_m2 = missclass(train$Class, predict(m2, newdata = train1, type = "response") > 0.5)
+test_error_m2 = missclass(test$Class, predict(m2, newdata = test1, type = "response") > 0.5)
+
+# Logistic Regression: Results
+cat("Model 1 - Training Error:", train_error_m1, "Test Error:", test_error_m1, "\n")
+cat("Model 2 - Training Error:", train_error_m2, "Test Error:", test_error_m2, "\n")
+cat("Model 1 Coefficients:\n")
+print(summary(m1))
+
+# Decision Tree Model
+fit = tree(Class ~ ., data = train)
+
+# Cross-validation for optimal tree size
+set.seed(12345)
+cv.res = cv.tree(fit)
+optimal_size = cv.res$size[which.min(cv.res$dev)]
+finalTree0 = prune.tree(fit, best = optimal_size)
+
+# Predictions and Errors for Pruned Tree
+Yfit1 = predict(finalTree0, newdata = train, type = "class")
+Yfit2 = predict(finalTree0, newdata = test, type = "class")
+train_error_tree = missclass(train$Class, Yfit1)
+test_error_tree = missclass(test$Class, Yfit2)
+
+# Decision Tree: Results
+cat("Optimal Tree Size:", optimal_size, "\n")
+cat("Training Error (Tree):", train_error_tree, "Test Error (Tree):", test_error_tree, "\n")
+
+# Tuning Minimum Deviance
+mind = seq(0.001, 0.01, 0.001)
+lM = length(mind)
+TrE = numeric(lM)
+TeE = numeric(lM)
+
+for (i in 1:lM) {
+  fit = tree(Class ~ ., data = train, control = tree.control(nobs = nrow(train), mindev = mind[i]))
+  TrE[i] = missclass(train$Class, predict(fit, newdata = train, type = "class"))
+  TeE[i] = missclass(test$Class, predict(fit, newdata = test, type = "class"))
+}
+
+# Plot Training and Test Errors
+plot(mind, TrE, col = "blue", ylim = c(0.05, 0.15), type = "b", xlab = "Minimum Deviance", ylab = "Error", main = "Error vs Minimum Deviance")
+points(mind, TeE, col = "red", type = "b")
+legend("topright", legend = c("Training Error", "Test Error"), col = c("blue", "red"), lty = 1)
+
+# Impurity Difference for Pruning
+ImpurityDiff0 = 0.057796 * 1488 - (0.011649 * 1116 + 0.196237 * 372)
+ImpurityDiff1 = 0.026504 * 981 - (0.061125 * 409 + 0.001748 * 572)
+
+# Pruning Decision
+cat("Impurity Difference for Nodes 14 and 15:", ImpurityDiff0, "\n")
+cat("Impurity Difference for Nodes 4 and 5:", ImpurityDiff1, "\n")
+if (ImpurityDiff0 > ImpurityDiff1) {
+  cat("Nodes 14 and 15 should be pruned first.\n")
+} else {
+  cat("Nodes 4 and 5 should be pruned first.\n")
+}
